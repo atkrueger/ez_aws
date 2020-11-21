@@ -7,7 +7,16 @@ from typing import List, Dict
 
 import requests #for http querying
 import pathlib
-import so7z
+
+try:
+    import so7z
+    success_so7z = True
+except ImportError as e:
+    print("Warning: Failed to import so7z, so ez_aws will not load the functions that depend on it")
+    print("The rest of ez_aws will continue to work as normal")
+    print("Official error message below:\n")
+    print(e)
+    success_so7z = False
 
 
 import multiprocessing as mp
@@ -396,17 +405,17 @@ class AWS:
         response = obj.get()
         return response['Body'] 
 
+    if success_so7z:
+        def get_7zip_archive(self, bucket_name: str, file_key: str, password : str = None) -> so7z.SmartOpen7z:
+            """Returns a SmartOpen7z object (an archive), given parameters.
+            If it is password protected, then you must enter a password to decrypt it."""
+            url = "S3://" + bucket_name + "/" + file_key
 
-    def get_7zip_archive(self, bucket_name: str, file_key: str, password : str = None) -> so7z.SmartOpen7z:
-        """Returns a SmartOpen7z object (an archive), given parameters.
-        If it is password protected, then you must enter a password to decrypt it."""
-        url = "S3://" + bucket_name + "/" + file_key
-
-        return so7z.SmartOpen7z(
-            smart_open_url=url,
-            mode='r',
-            password = password
-        )
+            return so7z.SmartOpen7z(
+                smart_open_url=url,
+                mode='r',
+                password = password
+            )
 
 
 
