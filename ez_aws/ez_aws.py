@@ -12,7 +12,8 @@ try:
     import so7z
     success_so7z = True
 except ImportError as e:
-    print("Warning: Failed to import so7z, so ez_aws will not load the functions that depend on it")
+    print("Warning: Failed to import so7z, so ez_aws will not load the functions that depend on it.")
+    print("Note that, for unknown reasons, so7z will not import properly in IPython/Jupyter even when it loads properly in the interpreter.")
     print("The rest of ez_aws will continue to work as normal")
     print("Official error message below:\n")
     print(e)
