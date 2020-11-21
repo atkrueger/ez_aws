@@ -178,9 +178,14 @@ class AWS:
             self.s3_client = self.session.client('s3')
         all_objects = self.s3_client.list_objects_v2(Bucket = bucket_name,
                                                 Prefix=prefix,
-                                                MaxKeys=1000)
-        for obj in all_objects['Contents']:
-            filenames.append(obj['Key'])
+                                                MaxKeys=1000)   
+        try:
+            for obj in all_objects['Contents']:
+                filenames.append(obj['Key'])
+        except KeyError:
+            print("all_objects in list_keys did not have a 'contents' key, returning empty list")
+            print(all_objects)
+            return []
         
         group = 1 
         while all_objects['IsTruncated']:
