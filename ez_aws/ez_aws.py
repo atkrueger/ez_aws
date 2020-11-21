@@ -7,8 +7,8 @@ from typing import List, Dict
 
 import requests #for http querying
 import pathlib
-#import so7z
-from so7z import SmartOpen7z
+import so7z
+
 
 import multiprocessing as mp
 
@@ -397,12 +397,12 @@ class AWS:
         return response['Body'] 
 
 
-    def get_7zip_archive(self, bucket_name: str, file_key: str, password : str = None) -> SmartOpen7z:
+    def get_7zip_archive(self, bucket_name: str, file_key: str, password : str = None) -> so7z.SmartOpen7z:
         """Returns a SmartOpen7z object (an archive), given parameters.
         If it is password protected, then you must enter a password to decrypt it."""
         url = "S3://" + bucket_name + "/" + file_key
 
-        return SmartOpen7z(
+        return so7z.SmartOpen7z(
             smart_open_url=url,
             mode='r',
             password = password
