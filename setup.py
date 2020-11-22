@@ -8,5 +8,6 @@ setup(
     author='atk',
     author_email='atkrueger@gmail.com',
     license='MIT',
-    packages=['ez_aws']
+    packages=['ez_aws'],
+    install_requires=['boto3', 'smart_open', 'requests']
 )
