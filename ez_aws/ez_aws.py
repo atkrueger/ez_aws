@@ -2,7 +2,6 @@ import boto3, botocore
 import smart_open
 import csv
 
-#from timer import Timer
 from typing import List, Dict
 
 import requests #for http querying
@@ -423,72 +422,3 @@ class AWS:
                 password = password
             )
 
-
-
-def main():
-    
-    aws = AWS() #takes 0.16 seconds to instantaite. I think it is worth caching it
-
-    """ Example reading and writing to S3 buckets. Uses smart_open on the back end
-    with aws.open("SoftwareLegalEcon", "staff list.csv") as fin:
-        with aws.open("SoftwareLegalEcon", "staff list copy.csv", mode='w') as fout:
-            for row in fin:
-                print(row)
-                fout.write(row)
-
-    with aws.open("SoftwareLegalEcon", "staff list copy.csv") as fin:
-        for row in fin:
-            print(row)
-    """
-
-    #bucket_size = aws.get_bucket_size("SoftwareLegalEcon", in_gb=True)
-    #print("SoftwareLegalEcon bucket size (GB): , bucket_size)
-    
-    #buckets = aws.list_bucket_names()
-    
-    #for bucket in aws.list_bucket_names(only_accessible=True):
-     #   print(bucket)
-    
-    
-    #print(aws.list_bucket_names(only_accessible=True))
-    #print(aws.get_bucket_size("app-annie-2020-09-production", in_tb=True))
-
-    """
-    print("Keys starting with 'staff' in SoftwareLegalEcon)")
-    for key in aws.list_keys("SoftwareLegalEcon", prefix="staff"):
-        print(key)
-    """
-    
-    """
-    with aws.open("SoftwareLegalEcon", "sle_index_from_ec2.csv", mode='w') as index_out:
-    #with open("C:/legal econ/data/sle_index.csv", mode='w', newline='') as index_out:
-        aws.get_file_index("SoftwareLegalEcon", prefix="staff", fout=index_out,get_column_names=True)
-    """
-    """
-    aws.download(
-        bucket_name="SoftwareLegalEcon",
-        key="staff list.csv",
-        save_location="C:/legal econ/data/made up folder2/staff list downloaded.csv"
-    )
-    """
-    """
-    aws.copy_within_aws(
-        source_bucket_name="SoftwareLegalEcon",
-        dest_bucket_name="cameronvapple",
-        source_file_key="staff list.csv"
-    )
-    """
-    """
-    staff_list_stream = aws.get_stream(
-        bucket_name="SoftwareLegalEcon",
-        file_key = "staff list.csv"
-    )
-
-    for line in staff_list_stream:
-        print(line.decode('utf-8'))
-    """
-
-    print(aws.is_ec2_instance())
-
-if __name__ == "__main__":
-    main()
