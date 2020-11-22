@@ -1,1 +1,1 @@
-from ez_aws.ez_aws import AWS
+from .ez_aws import AWS
