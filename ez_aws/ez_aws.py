@@ -172,7 +172,8 @@ class AWS:
     
 
     def can_access_bucket(self,bucket: str) -> bool:
-        """returns true only if the bucket exists and you have permission to access it"""
+        """returns true only if the bucket exists and you have permission to access it
+        Note that this will return false if the bucket has requester pays access becuase the head_object function doesn't have a requester_pays options"""
         if self.s3_client==None:
             self.s3_client = self.session.client('s3')
         try:
@@ -185,14 +186,21 @@ class AWS:
         except:
             return False #means either bucket doesn't exist or you don't have permission
     
-    def list_keys(self, bucket_name: str, prefix : str = "") -> List[str]:
+    def list_keys(self, bucket_name: str, prefix : str = "", requester_pays=False) -> List[str]:
         """returns a list of all file keys in the bucket"""
         filenames = []
         if self.s3_client==None:
             self.s3_client = self.session.client('s3')
-        all_objects = self.s3_client.list_objects_v2(Bucket = bucket_name,
-                                                Prefix=prefix,
-                                                MaxKeys=1000)   
+
+        if requester_pays:
+            all_objects = self.s3_client.list_objects_v2(Bucket = bucket_name,
+                                                    Prefix=prefix,
+                                                    MaxKeys=1000,
+                                                    RequestPayer='requester')
+        else:
+            all_objects = self.s3_client.list_objects_v2(Bucket = bucket_name,
+                                                    Prefix=prefix,
+                                                    MaxKeys=1000)   
         try:
             for obj in all_objects['Contents']:
                 filenames.append(obj['Key'])
@@ -206,10 +214,17 @@ class AWS:
             #print("group: " + str(group))
             group = group+1
             nextToken = all_objects['NextContinuationToken']
-            all_objects = self.s3_client.list_objects_v2(Bucket = bucket_name,
-                                                Prefix=prefix,
-                                                MaxKeys=1000,
-                                                ContinuationToken= nextToken)
+            if requester_pays:
+                all_objects = self.s3_client.list_objects_v2(Bucket = bucket_name,
+                                                    Prefix=prefix,
+                                                    MaxKeys=1000,
+                                                    ContinuationToken= nextToken,
+                                                    RequestPayer='requester')
+            else:
+                all_objects = self.s3_client.list_objects_v2(Bucket = bucket_name,
+                                                    Prefix=prefix,
+                                                    MaxKeys=1000,
+                                                    ContinuationToken= nextToken)
             for obj in all_objects['Contents']:
                 filenames.append(obj['Key'])
         return filenames
