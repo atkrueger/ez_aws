@@ -1,8 +1,11 @@
 import boto3, botocore
-import smart_open
+import smart_open.s3 as sos3
+#import smart_open
 import csv
+import gzip
+import io
 
-from typing import List, Dict
+from typing import List, Dict, Tuple
 
 import requests #for http querying
 import pathlib
@@ -18,14 +21,6 @@ except ImportError as e:
     print(e)
     success_so7z = False
 
-
-import multiprocessing as mp
-
-"""
-def print_column_names(params):
-    key, bucket = params
-    boto3.
-"""
 
 class AWS:
     """Wrapper class for boto3 that simplifies a lot of processes we have to do repeatedly"""
@@ -43,17 +38,13 @@ class AWS:
 
         if session != None:
             self.session=session
-            return
-        
-        if access_key != None and secret_key != None:
+        elif access_key != None and secret_key != None:
             self.session = boto3.Session(
                 aws_access_key_id = access_key,
                 aws_secret_access_key=secret_key,
                 region_name = region
             )
-            return
-        
-        if credential_file_path != None:
+        elif credential_file_path != None:
             creds = csv.DictReader(open(credential_file_path))
             for row in creds:
                 self.session = boto3.Session(
@@ -61,9 +52,8 @@ class AWS:
                     aws_secret_access_key=row['Secret access key'],
                     region_name = region
                 )
-                return
-
-        self.session = boto3.Session(region_name = region)
+        else: 
+            self.session = boto3.Session(region_name = region)
         
         #establishing region, in case it isn't established yet (such as for EC2 instance)
         if self.session.region_name ==None:
@@ -98,15 +88,32 @@ class AWS:
         except:
             return False
 
-    def open(self, bucket_name : str , key : str, mode = 'r'):
-        """Opens a specified S3 file as a stream. So won't load the whole thing.
+    # def open(self, bucket_name : str , key : str, mode = 'r', requester_pays = False):
+    #     """Opens a specified S3 file as a stream. So won't load the whole thing.
+    #     If request_payer is true, then request resource as the payer of any charges incurred
 
-        Good example use: with aws.open("SoftwareLegalEcon", "staff list.csv") as fin:"""
-        uri = "S3://" + bucket_name + '/' + key
-        return smart_open.open(
-            uri = uri,
-            mode= mode
-        )
+    #     Good example use: with aws.open("SoftwareLegalEcon", "staff list.csv") as fin:"""
+    #     uri = "S3://" + bucket_name + '/' + key
+
+    #     transport_params = {'session': self.session}
+    #     if requester_pays:
+    #         #transport_params['RequestPayer']= 'x-amz-request-payer=requester'
+    #         #transport_params['RequestPayer']= 'x-amz-request-payer : requester'
+    #         print("Adding request payer to transport params")
+    #         #transport_params['x-amz-request-payer'] = 'requester'
+    #         transport_params['RequestPayer'] = 'requester'
+
+    #     return smart_open.open(
+    #         uri=uri,
+    #         mode=mode,
+    #         transport_params=transport_params
+    #     )
+
+
+    def get_cur_user(self):
+        """returns ARN of the user of this current session"""
+        return self.session.client('sts').get_caller_identity()['Arn']
+
     
     def get_bucket_size(self, bucket_name : str,
         in_gb = False, in_tb = False, print_progress = False) -> int :
@@ -311,17 +318,7 @@ class AWS:
 
 
 
-    """
-    def parallel_print_headers(self, bucket_name, prefix : str = "")-> None:
-        keys = self.list_keys(bucket_name, prefix=prefix)
-        buckets = [bucket_name] * len(keys)
-        with mp.Pool(mp.cpu_count()) as pool:
-            pool.map(
-                func=print_column_names,
-                iterable=zip(keys, buckets)
-            )
-            pool.map
-    """
+   
         
     def get_column_names(self, bucket_name, key)-> List[str]:
         """returns a list of the column names of each file.
@@ -351,14 +348,16 @@ class AWS:
             return ["unreadable non csv file"]
 
 
-    def download(self, bucket_name : str , key : str, save_location : str) -> None:
-        """downloads from from S3 to local computer.
+    def download(self, bucket_name : str , key : str, save_location : str, requester_pays=False) -> None:
+        """downloads from from S3 to local computer. 
+        save_location should be full path, including filename and extension
         
         Necessarily incurs data transfer out charges"""
-
+        print(f"save_location: {save_location}")
         #check to make sure the folder exists locally
         outpath = pathlib.Path(save_location)
         outdirectory = outpath.parent
+        print(f"outdirectory: {outdirectory}")
         if not outdirectory.exists():
             print("Specified directory ", outdirectory.name, " does not exist yet.")
             print("Creating ", outdirectory.name)
@@ -368,7 +367,12 @@ class AWS:
         if self.s3_resources == None:
             self.s3_resources = self.session.resource('s3')
         bucket = self.s3_resources.Bucket(bucket_name)
-        bucket.download_file(key,save_location)
+        extra_args = {}
+        if requester_pays:
+             extra_args['RequestPayer']='requester'
+        response = bucket.download_file(key,save_location, ExtraArgs = extra_args)
+        response = bucket.download_file(key,save_location)
+        print(response)
 
     def upload(self, bucket_name : str, key: str, local_file_location: str)-> None:
         """uploads file from local computer to the bucket, with specified key"""
@@ -394,31 +398,120 @@ class AWS:
             ExtraArgs={'ACL':'bucket-owner-full-control'} #this extra arg assures that the destination bucket owner will have full control 
         )
     
-    def get_stream(self, bucket_name : str, file_key : str) -> botocore.response.StreamingBody:
-        """ returns a botocore.response.StreamingBody object that you can use
-        to stream (and then process) the file a little bit at at time, so that you 
-        don't need to download the whole file.
-        E.g.
-        streamingFile = getS3Stream(session,bucket_name, file_key)
-        for line in streamingFile.iter_lines():
-            print(line) #or do whatever else you want to do with each line
-        """
-        if self.s3_resources == None:
-            self.s3_resources = self.session.resource('s3')
-        bucket = self.s3_resources.Bucket(bucket_name)
-        obj = bucket.Object(key=file_key)
-        response = obj.get()
-        return response['Body'] 
+    # def get_stream(self, bucket_name : str, file_key : str) -> botocore.response.StreamingBody:
+    #     """ returns a botocore.response.StreamingBody object that you can use
+    #     to stream (and then process) the file a little bit at at time, so that you 
+    #     don't need to download the whole file.
+    #     E.g.
+    #     streamingFile = getS3Stream(session,bucket_name, file_key)
+    #     for line in streamingFile.iter_lines():
+    #         print(line) #or do whatever else you want to do with each line
+    #     """
+    #     if self.s3_resources == None:
+    #         self.s3_resources = self.session.resource('s3')
+    #     bucket = self.s3_resources.Bucket(bucket_name)
+    #     obj = bucket.Object(key=file_key)
+    #     response = obj.get()
+    #     return response['Body'] 
+
+    # def get_stream2(self, bucket_name: str, key: str, requester_pays=False):
+    #     if self.s3_client==None:
+    #         self.s3_client = self.session.client('s3')
+
+    #     if requester_pays:
+    #         response = self.s3_client.get_object(
+    #             Bucket=bucket_name,
+    #             Key=key,
+    #             RequestPayer='requester'
+    #         )
+    #     else:
+    #         response = self.s3_client.get_object(
+    #             Bucket=bucket_name,
+    #             Key=key,
+    #         )
+    #     return response['Body']
+
+    def open(self, bucket_name: str, key: str, requester_pays=False, mode='rb', decompress=False, encoding=None):
+        
+        supported_modes = ['rb', 'wb', 'r', 'w']
+        if mode not in supported_modes:
+            raise ValueError("AWS.open() only accepts the following modes: ", supported_modes)
+
+        #add necessary keywords for requester pays
+        object_kwargs = {}
+        if requester_pays:
+            object_kwargs={'RequestPayer': 'requester'}
+
+        binary_mode = mode[0] + 'b'
+        #open the binary version
+        result = sos3.open(
+            bucket_id = bucket_name,
+            key_id = key,
+            session = self.session,
+            mode=binary_mode,
+            object_kwargs = object_kwargs
+        )
+
+        if mode in ['r', 'w']:
+            if encoding==None:
+                print("set encoding to utf-8 because user specified 'r' or 'w' mode but not encoding type")
+                encoding='utf-8'
+
+        #decompress
+        if decompress:
+            extension, sub_extension = self._get_extensions(key)
+            if extension== 'gz':
+                if encoding!= None:
+                    gzip_mode = mode[0] + 't' #text mdoe
+                else:
+                    gzip_mode = mode[0] #binary for gzip
+                result = gzip.open(result, mode=gzip_mode, encoding = encoding)
+            elif extension == '7z':
+                raise NotImplementedError("Have not implemented 7z decompress in ez_aws.open yet")
+            elif extension in ['txt', 'csv']:
+                print(f"user requseted to decompress file {key}, but decompress is not necessary for file with extension {extension}")
+            else:
+                raise NotImplementedError("ez_aws library only decompresses/compresses gz files currently")
+        else: #no need to decompress
+           if encoding!= None: #transform into decoded stream if you want
+               print("Converting to textio wrapper with encoding =", encoding)
+               result = io.TextIOWrapper(
+                   buffer = result,
+                   encoding=encoding,
+               )
+        return result
+       
+
+    def _get_extensions(self, filename: str)-> Tuple[str,str]:
+        """returns extension, sub_extension of a file.
+        E.g. if a file is "Hello.csv.gz", the extension would be .gz and the sub-extension would be .csv"""
+        split_key = filename.split('.')
+        try:
+            extension = split_key[-1]
+        except IndexError:
+            extension =""
+        
+        try:
+            sub_extension = split_key[-2] #e.g. in a .csv.gz file, sub-extension is .csv
+        except IndexError:
+            sub_extension=""
+
+        return extension, sub_extension
 
     if success_so7z:
-        def get_7zip_archive(self, bucket_name: str, file_key: str, password : str = None) -> so7z.SmartOpen7z:
+        def get_7zip_archive(self, bucket_name: str, key: str, password : str = None, requester_pays=False) -> so7z.SmartOpen7z:
             """Returns a SmartOpen7z object (an archive), given parameters.
             If it is password protected, then you must enter a password to decrypt it."""
-            url = "S3://" + bucket_name + "/" + file_key
+
+            file = self.open(
+                    bucket_name =bucket_name,
+                    key=key,
+                    requester_pays=requester_pays,
+                    mode='rb'
+            )
 
             return so7z.SmartOpen7z(
-                smart_open_url=url,
-                mode='r',
-                password = password
+                file=file,
+                password=password
             )
 
