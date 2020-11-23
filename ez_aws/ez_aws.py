@@ -229,7 +229,7 @@ class AWS:
                 filenames.append(obj['Key'])
         return filenames
         
-    def get_file_index(self, bucket_name : str, prefix : str = "", fout = None, get_column_names=False, print_progress=False) -> List[Dict]:
+    def get_file_index(self, bucket_name : str, prefix : str = "", fout = None, get_column_names=False, print_progress=False, requester_pays=False) -> List[Dict]:
         """returns a list with one element for each file in the S3 bucket (with matching prefix)
         Each element is a dictionary with at the very least the following keys: 
         1. 'key'
@@ -244,6 +244,11 @@ class AWS:
         And you want to write to the file as you index it in case you hit an error along the way
 
         fout should be an opened file in write mode"""
+
+        if requester_pays:
+            RequestPayer='requester'
+        else:
+            RequestPayer='bucketowner'
 
         if self.s3_client==None:
             self.s3_client = self.session.client('s3')
@@ -275,7 +280,8 @@ class AWS:
             if first:
                 all_objects = self.s3_client.list_objects_v2(Bucket = bucket_name,
                                                     Prefix=prefix,
-                                                    MaxKeys=1000)
+                                                    MaxKeys=1000,
+                                                    RequestPayer=RequestPayer)
                 first = False
 
             else:
@@ -283,25 +289,26 @@ class AWS:
                 all_objects = self.s3_client.list_objects_v2(Bucket = bucket_name,
                                                     Prefix=prefix,
                                                     MaxKeys=1000,
-                                                    ContinuationToken= nextToken)
+                                                    ContinuationToken= nextToken,
+                                                    RequestPayer=RequestPayer)
             for obj in all_objects['Contents']:
                 if print_progress:
                     print(obj['Key'])
-                row = self.get_obj_index(bucket_name, obj, get_column_names=get_column_names)
+                row = self.get_obj_index(bucket_name, obj, get_column_names=get_column_names, RequestPayer=RequestPayer)
                 index.append(row)
                 if fout != None:
                     writer.writerow(row)
       
         return index
 
-    def get_obj_index(self, bucket_name, obj, get_column_names=False) -> Dict:
+    def get_obj_index(self, bucket_name, obj, get_column_names=False, RequestPayer: str = 'bucketowner') -> Dict:
         result = {'key':obj['Key'], 'sizebyte' :obj['Size'], 'sizegigabyte' : obj['Size']/ 1.0E9}
 
         if get_column_names:
             if obj['Size']==0: #if no data, then no column names
                 result['column names'] = "none"
             else:
-                column_names = self.get_column_names(bucket_name, obj['Key'])
+                column_names = self.get_column_names(bucket_name, obj['Key'], requester_pays=(RequestPayer=='requester'))
                 column_string = ""
                 for column in column_names:
                     column_string += column + ','
@@ -310,7 +317,7 @@ class AWS:
                 result['column names'] = column_string
         return result
 
-    def get_key_index(self, bucket: str, key: str, get_column_names=False) -> Dict:
+    def get_key_index(self, bucket: str, key: str, get_column_names=False, RequestPayer : str = 'bucketowner') -> Dict:
         """ returns a dictionary with following keys:
         1. 'key'
         2. 'sizebyte'
@@ -322,14 +329,15 @@ class AWS:
 
         header = self.s3_client.head_object(
             Bucket=bucket,
-            Key = key
+            Key = key,
+            RequestPayer=RequestPayer
         )
         
         size_bytes = int(header['ResponseMetadata']['HTTPHeaders']['content-length'])
         result = {'key': key, 'sizebyte': size_bytes, 'sizegigabyte' : size_bytes / 1.0E9}
         
         if get_column_names:
-            column_names = self.get_column_names(bucket, key)
+            column_names = self.get_column_names(bucket, key, requester_pays = (RequestPayer=='requester'))
             column_string = ""
             for column in column_names:
                 column_string += column + ','
@@ -343,10 +351,11 @@ class AWS:
 
    
         
-    def get_column_names(self, bucket_name, key)-> List[str]:
+    def get_column_names(self, bucket_name, key, requester_pays = False)-> List[str]:
         """returns a list of the column names of each file.
         first step is to get the extension
         For now, only .csv and .csv.gz are implemented"""
+        print(f"Requester pays: {requester_pays}")
 
         split_key = key.split('.')
         try:
@@ -359,9 +368,16 @@ class AWS:
         except IndexError:
             sub_extension=""
 
-        if extension == 'csv' or (extension=='gz' and sub_extension=='csv'): #can read it directly with smart open
+        if extension == 'csv': 
             try:
-                with self.open(bucket_name, key) as fin:
+                with self.open(bucket_name, key, requester_pays=requester_pays,encoding='utf-8') as fin:
+                    reader = csv.DictReader(fin)
+                    return reader.fieldnames
+            except Exception as e:
+                return [f"unreadable csv: {str(e)}"]
+        elif extension=='gz' and sub_extension=='csv':
+            try:
+                with self.open(bucket_name, key, requester_pays=requester_pays, decompress=True, encoding='utf-8') as fin:
                     reader = csv.DictReader(fin)
                     return reader.fieldnames
             except Exception as e:
