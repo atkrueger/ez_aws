@@ -88,28 +88,6 @@ class AWS:
         except:
             return False
 
-    # def open(self, bucket_name : str , key : str, mode = 'r', requester_pays = False):
-    #     """Opens a specified S3 file as a stream. So won't load the whole thing.
-    #     If request_payer is true, then request resource as the payer of any charges incurred
-
-    #     Good example use: with aws.open("SoftwareLegalEcon", "staff list.csv") as fin:"""
-    #     uri = "S3://" + bucket_name + '/' + key
-
-    #     transport_params = {'session': self.session}
-    #     if requester_pays:
-    #         #transport_params['RequestPayer']= 'x-amz-request-payer=requester'
-    #         #transport_params['RequestPayer']= 'x-amz-request-payer : requester'
-    #         print("Adding request payer to transport params")
-    #         #transport_params['x-amz-request-payer'] = 'requester'
-    #         transport_params['RequestPayer'] = 'requester'
-
-    #     return smart_open.open(
-    #         uri=uri,
-    #         mode=mode,
-    #         transport_params=transport_params
-    #     )
-
-
     def get_cur_user(self):
         """returns ARN of the user of this current session"""
         return self.session.client('sts').get_caller_identity()['Arn']
@@ -398,38 +376,6 @@ class AWS:
             ExtraArgs={'ACL':'bucket-owner-full-control'} #this extra arg assures that the destination bucket owner will have full control 
         )
     
-    # def get_stream(self, bucket_name : str, file_key : str) -> botocore.response.StreamingBody:
-    #     """ returns a botocore.response.StreamingBody object that you can use
-    #     to stream (and then process) the file a little bit at at time, so that you 
-    #     don't need to download the whole file.
-    #     E.g.
-    #     streamingFile = getS3Stream(session,bucket_name, file_key)
-    #     for line in streamingFile.iter_lines():
-    #         print(line) #or do whatever else you want to do with each line
-    #     """
-    #     if self.s3_resources == None:
-    #         self.s3_resources = self.session.resource('s3')
-    #     bucket = self.s3_resources.Bucket(bucket_name)
-    #     obj = bucket.Object(key=file_key)
-    #     response = obj.get()
-    #     return response['Body'] 
-
-    # def get_stream2(self, bucket_name: str, key: str, requester_pays=False):
-    #     if self.s3_client==None:
-    #         self.s3_client = self.session.client('s3')
-
-    #     if requester_pays:
-    #         response = self.s3_client.get_object(
-    #             Bucket=bucket_name,
-    #             Key=key,
-    #             RequestPayer='requester'
-    #         )
-    #     else:
-    #         response = self.s3_client.get_object(
-    #             Bucket=bucket_name,
-    #             Key=key,
-    #         )
-    #     return response['Body']
 
     def open(self, bucket_name: str, key: str, requester_pays=False, mode='rb', decompress=False, encoding=None):
         
