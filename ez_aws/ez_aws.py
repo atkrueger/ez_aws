@@ -92,16 +92,43 @@ class AWS:
         """returns ARN of the user of this current session"""
         return self.session.client('sts').get_caller_identity()['Arn']
 
+    def get_bucket_request_payment(self, bucket_name: str, bucket_owner_account_id : str = None) -> str:
+        """returns one of the following:
+        1. 'Requester': if the requester must pay
+        2. 'BucketOwner': if the bucket owner must pay
+        3. 'AccessDenied': if you do not have necessary permission to get the bucket_request_payment configuration"""
+
+        if self.s3_client==None:
+            self.s3_client = self.session.client('s3')
+        
+        #add try /except with proper error when we see it
+        try:
+            if bucket_owner_account_id == None:
+                response = self.s3_client.get_bucket_request_payment(Bucket=bucket_name)
+            else:
+                response = self.s3_client.get_bucket_request_payment(Bucket=bucket_name, ExpectedBucketOwner =bucket_owner_account_id)
+            return response['Payer']
+        except self.s3_client.exceptions.ClientError as e:
+            if e.response['Error']['Code']=='AccessDenied':
+                return 'AccessDenied'
+            else:
+                raise e
+            
+        
+        
     
     def get_bucket_size(self, bucket_name : str,
-        in_gb = False, in_tb = False, print_progress = False) -> int :
+        in_gb = False, in_tb = False, print_progress = False,
+        requester_pays = False) -> int :
         """ returns total size (in bytes) of bucket"""
-
         total_file_size = 0
         if self.s3_client==None:
             self.s3_client = self.session.client('s3')
 
-        all_objects = self.s3_client.list_objects_v2(Bucket = bucket_name)                                 
+        if requester_pays:
+            all_objects = self.s3_client.list_objects_v2(Bucket = bucket_name, RequestPayer='requester')
+        else:
+            all_objects = self.s3_client.list_objects_v2(Bucket = bucket_name)                        
         for obj in all_objects['Contents']:
             total_file_size+=obj['Size']
         
@@ -111,7 +138,10 @@ class AWS:
                 print("List of objects truncated for get_bucket_size, breaking into groups. This is group: " + str(group))
             group = group+1
             nextToken = all_objects['NextContinuationToken']
-            all_objects = self.s3_client.list_objects_v2(Bucket = bucket_name, ContinuationToken= nextToken)
+            if requester_pays:
+                all_objects = self.s3_client.list_objects_v2(Bucket = bucket_name, ContinuationToken= nextToken, RequestPayer='requester')
+            else:
+                all_objects = self.s3_client.list_objects_v2(Bucket = bucket_name, ContinuationToken= nextToken)
             for obj in all_objects['Contents']:
                 total_file_size+=obj['Size']
 
